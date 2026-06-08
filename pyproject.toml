@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grpo-reasoning"
+version = "0.1.0"
+description = "Single-task GRPO fine-tuning for math (GSM8K) and chemistry (MolecularIQ) with Qwen2.5-0.5B."
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = [
+    "transformers>=4.47,<5.0",
+    "trl>=0.16,<2.0",
+    "datasets>=3.0",
+    "accelerate>=1.0",
+    "peft>=0.10",
+    "numpy>=1.26,<2.0",
+    "matplotlib>=3.8",
+    "pyyaml>=6.0",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+bnb = ["bitsandbytes>=0.43; platform_system != 'Darwin'"]
+chem = ["moleculariq-core @ git+https://github.com/ml-jku/moleculariq-core.git"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+grpo-evaluate = "grpo_reasoning.cli:evaluate_main"
+grpo-plot-training = "grpo_reasoning.cli:plot_training_main"
+grpo-preprocess = "grpo_reasoning.cli:preprocess_main"
+grpo-train = "grpo_reasoning.cli:train_main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

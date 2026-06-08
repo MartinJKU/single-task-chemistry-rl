@@ -1,0 +1,7 @@
+# Install PyTorch separately, picking the CUDA build that matches your driver.
+# Example on Windows + CUDA 12.1:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+#
+# Then install the project runtime, chemistry, 8-bit optimizer, and test extras.
+
+-e .[chem,bnb,dev]
