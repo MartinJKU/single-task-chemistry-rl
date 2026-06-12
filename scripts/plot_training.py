@@ -1,7 +1,7 @@
 """Plot training curves (loss / reward / KL) from a trainer_state.json.
 
 Usage:
-    python scripts/plot_training.py --output-dir outputs/gsm8k-qwen0.5b-grpo
+    python scripts/plot_training.py --output-dir outputs/miq-multitask-pooled-grpo
 """
 from __future__ import annotations
 

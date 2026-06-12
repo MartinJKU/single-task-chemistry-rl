@@ -1,11 +1,12 @@
 task_name: moleculariq
 model_name: Qwen/Qwen2.5-0.5B-Instruct
-dataset_path: data/moleculariq_train
-output_dir: outputs/moleculariq-qwen0.5b-grpo
+dataset_path: data/miq_multitask_pooled_train
+output_dir: outputs/miq-multitask-pooled-grpo
 
+# Used only for legacy single-task MolecularIQ datasets. Mixed datasets dispatch
+# rewards per row using their task_type column.
 moleculariq_task_type: single_count
 
-# GRPO core
 learning_rate: 1.0e-5
 beta: 0.005
 num_generations: 4

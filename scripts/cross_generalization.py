@@ -11,11 +11,8 @@ configuration, producing a full (model × eval-task) accuracy matrix.  The
 baseline (untrained) model is included as a reference row so off-diagonal
 cells can be read as transfer / generalization relative to no training.
 
-      eval task ->        sc_ring_count  sc_aromatic_ring  si_ring_indices  cg_ring_count
-  baseline                     .             .                 .               .
-  trained on sc_ring_count   [diag]          .                 .               .
-  trained on sc_aromatic_ring  .           [diag]              .               .
-  ...
+Rows are models, columns are evaluation subtasks, and the black-boxed cell in
+each trained-model row marks the task that model was trained on.
 
 The diagonal is the in-distribution accuracy (same numbers as
 auto_train_compare).  The off-diagonal cells are out-of-distribution: a
@@ -30,7 +27,7 @@ Output files
 
 Usage
 -----
-    # Full matrix (reuses cached cells; ~20 evals on first run):
+    # Full matrix (reuses cached cells; baseline + specialists over the task suite):
     python scripts/cross_generalization.py
 
     # Quick smoke test:
@@ -38,14 +35,13 @@ Usage
 
     # Only some models / tasks:
     python scripts/cross_generalization.py --models sc_ring_count cg_ring_count
-    python scripts/cross_generalization.py --tasks sc_ring_count si_ring_indices
+    python scripts/cross_generalization.py --tasks sc_ring_count si_ring
 
     # Regenerate the plots/JSON from already-cached eval files:
     python scripts/cross_generalization.py --report-only
 
 The model and task names are the experiment names defined in
-auto_train_compare.py (sc_ring_count, sc_aromatic_ring, si_ring_indices,
-cg_ring_count).
+auto_train_compare.py.
 """
 from __future__ import annotations
 

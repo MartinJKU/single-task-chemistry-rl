@@ -1,22 +1,25 @@
 from __future__ import annotations
 
 import os
+import inspect
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import torch
 from datasets import load_from_disk
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM
 from trl import GRPOConfig, GRPOTrainer
 
 from .rewards import (
     format_reward,
     make_exact_match_reward,
     make_moleculariq_reward,
+    make_moleculariq_shaped_reward,
+    make_moleculariq_multitask_reward,
     soft_format_reward,
 )
-from .utils import set_seed
+from .utils import load_tokenizer, set_seed
 
 
 @dataclass
@@ -49,14 +52,19 @@ class TrainArgs:
         optim: Trainer optimizer name.
         use_soft_format_reward: Whether to include loose format partial credit.
         correctness_weight: Reward weight for correctness.
+        use_shaped_moleculariq_reward: Whether to add MolecularIQ partial credit.
+        shaped_moleculariq_weight: Maximum reward for shaped MolecularIQ partial credit.
+        smiles_validity_weight: Extra reward for valid generated SMILES.
+        resume_from_checkpoint: Optional checkpoint path, or "latest".
+        save_on_interrupt: Whether Ctrl+C should save an interrupt checkpoint.
         moleculariq_task_type: MolecularIQ task type used by the chemistry reward.
         grpo_overrides: Extra keyword arguments merged into `GRPOConfig`.
     """
 
     model_name: str = "Qwen/Qwen2.5-0.5B-Instruct"
-    dataset_path: str = "data/gsm8k_train"
-    output_dir: str = "outputs/gsm8k-qwen0.5b-grpo"
-    task_name: str = "gsm8k"
+    dataset_path: str = "data/miq_multitask_pooled_train"
+    output_dir: str = "outputs/miq-multitask-pooled-grpo"
+    task_name: str = "moleculariq"
 
     learning_rate: float = 1e-5
     beta: float = 0.005
@@ -81,6 +89,11 @@ class TrainArgs:
 
     use_soft_format_reward: bool = False
     correctness_weight: float = 2.0
+    use_shaped_moleculariq_reward: bool = True
+    shaped_moleculariq_weight: float = 1.0
+    smiles_validity_weight: float = 0.5
+    resume_from_checkpoint: str | None = None
+    save_on_interrupt: bool = True
 
     moleculariq_task_type: str = "single_count"
 
@@ -128,6 +141,64 @@ def _build_training_args(cfg: TrainArgs) -> GRPOConfig:
     return GRPOConfig(**base)
 
 
+def _latest_checkpoint(output_dir: str | Path) -> str | None:
+    """Return the numerically latest checkpoint under an output directory."""
+    output_dir = Path(output_dir)
+    checkpoints = []
+    for path in output_dir.glob("checkpoint-*"):
+        if not path.is_dir():
+            continue
+        try:
+            step = int(path.name.rsplit("-", 1)[-1])
+        except ValueError:
+            continue
+        checkpoints.append((step, path))
+    if not checkpoints:
+        return None
+    return str(max(checkpoints, key=lambda item: item[0])[1])
+
+
+def _resolve_resume_checkpoint(cfg: TrainArgs) -> str | None:
+    """Resolve a configured checkpoint path or the latest checkpoint alias."""
+    value = cfg.resume_from_checkpoint
+    if value is None or value is False:
+        return None
+    if value is True or str(value).lower() == "latest":
+        latest = _latest_checkpoint(cfg.output_dir)
+        if latest is None:
+            raise FileNotFoundError(
+                f"No checkpoint-* directory found under {cfg.output_dir}."
+            )
+        return latest
+    return str(value)
+
+
+def _save_interrupt_checkpoint(trainer: GRPOTrainer) -> str:
+    """Best-effort save of a resumable checkpoint after Ctrl+C."""
+    step = trainer.state.global_step
+    checkpoint_dir = Path(trainer.args.output_dir) / f"checkpoint-{step}"
+
+    # Prefer Trainer's real checkpoint path because it preserves optimizer,
+    # scheduler, RNG, and trainer state for resume.
+    try:
+        save_checkpoint = getattr(trainer, "_save_checkpoint")
+        signature = inspect.signature(save_checkpoint)
+        if "metrics" in signature.parameters:
+            save_checkpoint(trainer.model, trial=None, metrics=None)
+        else:
+            save_checkpoint(trainer.model, trial=None)
+    except Exception as exc:
+        print(
+            "[train] warning: full checkpoint save failed after interrupt; "
+            f"falling back to model/state save only ({exc})"
+        )
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        trainer.save_model(str(checkpoint_dir))
+
+    trainer.save_state()
+    return str(checkpoint_dir)
+
+
 def train(cfg: TrainArgs) -> str:
     """Run GRPO training and save the resulting model.
 
@@ -148,7 +219,7 @@ def train(cfg: TrainArgs) -> str:
     print(f"[train] dataset   = {cfg.dataset_path} (n={len(train_dataset)})")
     print(f"[train] output    = {cfg.output_dir}")
 
-    tokenizer = AutoTokenizer.from_pretrained(
+    tokenizer = load_tokenizer(
         cfg.model_name,
         model_max_length=cfg.max_prompt_length + cfg.max_completion_length,
     )
@@ -162,15 +233,35 @@ def train(cfg: TrainArgs) -> str:
 
     training_args = _build_training_args(cfg)
 
-    if cfg.task_name == "moleculariq":
+    is_multitask_moleculariq = (
+        cfg.task_name == "moleculariq" and "task_type" in train_dataset.column_names
+    )
+    shaped_reward = None
+    if is_multitask_moleculariq:
+        correctness = make_moleculariq_multitask_reward(weight=cfg.correctness_weight)
+        if cfg.use_shaped_moleculariq_reward:
+            shaped_reward = make_moleculariq_shaped_reward(
+                weight=cfg.shaped_moleculariq_weight,
+                smiles_validity_weight=cfg.smiles_validity_weight,
+            )
+        print("[train] reward   = moleculariq multitask dispatch")
+    elif cfg.task_name == "moleculariq":
         correctness = make_moleculariq_reward(
             task_type=cfg.moleculariq_task_type, weight=cfg.correctness_weight
         )
+        if cfg.use_shaped_moleculariq_reward:
+            shaped_reward = make_moleculariq_shaped_reward(
+                task_type=cfg.moleculariq_task_type,
+                weight=cfg.shaped_moleculariq_weight,
+                smiles_validity_weight=cfg.smiles_validity_weight,
+            )
     else:
         correctness = make_exact_match_reward(cfg.correctness_weight)
     reward_funcs = [format_reward, correctness]
     if cfg.use_soft_format_reward:
         reward_funcs.insert(0, soft_format_reward)
+    if shaped_reward is not None:
+        reward_funcs.insert(-1, shaped_reward)
 
     trainer = GRPOTrainer(
         model=model,
@@ -180,7 +271,25 @@ def train(cfg: TrainArgs) -> str:
         train_dataset=train_dataset,
     )
 
-    trainer.train()
+    resume_from_checkpoint = _resolve_resume_checkpoint(cfg)
+    if resume_from_checkpoint:
+        print(f"[train] resume   = {resume_from_checkpoint}")
+
+    try:
+        trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+    except KeyboardInterrupt:
+        print("\n[train] interrupted by user.")
+        if not cfg.save_on_interrupt:
+            print("[train] save_on_interrupt=false; exiting without extra checkpoint.")
+            raise
+        checkpoint = _save_interrupt_checkpoint(trainer)
+        print(f"[train] interrupt checkpoint saved to {checkpoint}")
+        print(
+            "[train] resume later with: "
+            f"python scripts/train.py --config <CONFIG> --resume-from-checkpoint {checkpoint}"
+        )
+        raise SystemExit(130)
+
     trainer.save_model(cfg.output_dir)
     tokenizer.save_pretrained(cfg.output_dir)
     print(f"[train] done. Model saved to {cfg.output_dir}")

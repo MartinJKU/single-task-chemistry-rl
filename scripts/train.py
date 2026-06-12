@@ -1,8 +1,8 @@
 """Run GRPO training from a YAML config.
 
 Usage:
-    python scripts/train.py --config configs/gsm8k_qwen05b.yaml
-    python scripts/train.py --config configs/gsm8k_qwen05b.yaml --max-steps 50  # quick sanity run
+    python scripts/train.py --config configs/miq_multitask_pooled_train.yaml
+    python scripts/train.py --config configs/miq_multitask_pooled_train.yaml --max-steps 50
 """
 from __future__ import annotations
 

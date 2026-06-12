@@ -1,11 +1,13 @@
 # grpo-reasoning
 
-Single-task GRPO fine-tuning of **Qwen2.5-0.5B-Instruct** using **TRL**, structured so the
-same code runs for math (GSM8K) and chemistry
+Multitask GRPO fine-tuning of **Qwen2.5-0.5B-Instruct** using **TRL** for
+MolecularIQ chemistry reasoning
 ([`ml-jku/moleculariq-trainPool`](https://huggingface.co/datasets/ml-jku/moleculariq-trainPool)).
 
-The math phase exists to verify the GRPO loop end-to-end on something stable before
-moving to the more fragile chemistry task.
+The project compares ways to train one chemistry reasoning model across several
+MolecularIQ subtasks, including pooled training, balanced task sampling, and
+adaptive task sampling. Single-task MolecularIQ runs are kept only as specialist
+baselines for comparison and later distillation experiments.
 
 ## Why this layout
 
@@ -16,17 +18,20 @@ moving to the more fragile chemistry task.
   `scripts/preprocess.py` builds a complete HF dataset (with `prompt` and `answer`
   columns) and saves it to disk; the trainer just loads it.
 - **Task abstraction** - `src/grpo_reasoning/tasks/base.py` defines a tiny `Task` ABC.
-  Each task knows only how to fetch its raw rows and extract `question` + `answer`.
-  Everything downstream (prompts, rewards, training, eval, plots) is shared.
+  MolecularIQ task variants generate `question` + `answer` rows, then shared
+  prompt, reward, training, eval, and plotting code handles the rest.
+- **Multitask metadata** - mixed datasets carry `task_id`, `task_type`, and
+  `properties` columns so rewards and evaluation can dispatch per example.
 
 ## Layout
 
 ```text
-configs/                   YAML configs per (task, model)
+configs/                   YAML configs for specialist and multitask experiments
 src/grpo_reasoning/
   prompts.py               R1-style system prompt + <answer> extraction
   rewards.py               format reward + correctness reward
-  tasks/                   Task registry: gsm8k.py, moleculariq.py
+  multitask.py             Pooled/balanced/adaptive MolecularIQ dataset builders
+  tasks/                   Task registry: moleculariq.py
   data.py                  Preprocess -> save_to_disk
   train.py                 GRPO training
   eval.py                  Greedy eval + accuracy + per-sample JSON
@@ -52,89 +57,155 @@ fails on Windows, switch `optim: adamw_torch` in the YAML.
 
 After installation, the workflows are available either through the script
 wrappers shown below or through console commands: `grpo-preprocess`,
-`grpo-train`, `grpo-plot-training`, and `grpo-evaluate`.
-
-## Math run
-
-```powershell
-# 1) Build the cached dataset
-python scripts/preprocess.py --task gsm8k --split train --out data/gsm8k_train
-
-# 2) Train
-python scripts/train.py --config configs/gsm8k_qwen05b.yaml
-
-# 3) Plot training curves
-python scripts/plot_training.py --output-dir outputs/gsm8k-qwen0.5b-grpo
-
-# 4) Evaluate baseline vs trained on the test set
-python scripts/evaluate.py --task gsm8k `
-    --baseline Qwen/Qwen2.5-0.5B-Instruct `
-    --trained  outputs/gsm8k-qwen0.5b-grpo `
-    --num-samples 200
-```
-
-Outputs:
-
-- `outputs/gsm8k-qwen0.5b-grpo/figures/training_curves.png`
-- `outputs/eval/baseline_eval.json`
-- `outputs/eval/trained_eval.json`
-- `outputs/eval/baseline_vs_trained.png`
-
-For a quick wiring check:
-
-```powershell
-python scripts/train.py --config configs/gsm8k_qwen05b.yaml --max-steps 30 `
-    --output-dir outputs/gsm8k-sanity
-```
+`grpo-preprocess-multitask`, `grpo-train`, `grpo-plot-training`,
+`grpo-evaluate`, and `grpo-evaluate-multitask`.
 
 If you OOM, reduce `max_completion_length` first, then `num_generations`, then
 `per_device_train_batch_size`.
 
-## Chemistry run
+## Pause and resume training
+
+Training writes regular `checkpoint-*` directories according to `save_steps`.
+You can pause a run with `Ctrl+C`; the trainer will try to save an interrupt
+checkpoint before exiting.
+
+Resume from the latest checkpoint in the configured output directory:
+
+```powershell
+python scripts/train.py --config configs/miq_multitask_pooled_train.yaml `
+    --resume-from-checkpoint
+```
+
+Resume from a specific checkpoint:
+
+```powershell
+python scripts/train.py --config configs/miq_multitask_pooled_train.yaml `
+    --resume-from-checkpoint outputs/miq-multitask-pooled-grpo/checkpoint-3200
+```
+
+If you want `Ctrl+C` to stop immediately without saving an extra checkpoint:
+
+```powershell
+python scripts/train.py --config configs/miq_multitask_pooled_train.yaml `
+    --no-save-on-interrupt
+```
+
+## Specialist chemistry runs
 
 `ml-jku/moleculariq-trainPool` ships SMILES + metadata. Questions and ground-truth
 answers are generated via
 [`moleculariq_core.MolecularIQD`](https://github.com/ml-jku/moleculariq-core) and
 cached to disk during preprocessing. The training loop never calls MolecularIQD.
 
-Pick one task variant per run via `--task-type` and the property via `--properties`.
+Pick one task variant per specialist run via `--task-type` and the property via
+`--properties`.
+
+The 16-task comparison suite is listed in `configs/miq_experiment_suite.yaml`.
+There is also a static specialist training YAML for every task, named
+`configs/miq_<task_id>.yaml`. The automated specialist comparison script can
+regenerate those YAMLs from `configs/moleculariq_qwen05b.yaml`, but the static
+files make manual runs and future distillation work easier to inspect.
 
 | `--task-type`            | What the model must return inside `<answer>` |
 |--------------------------|----------------------------------------------|
 | `single_count`           | JSON like `{"ring_count": 3}`                |
 | `multi_count`            | JSON dict with multiple count keys           |
-| `single_index`           | JSON like `{"ring_indices": [0, 1, 2]}`      |
+| `single_index`           | JSON like `{"ring_index": [0, 1, 2]}`        |
 | `multi_index`            | JSON dict with multiple index lists          |
 | `constraint_generation`  | JSON like `{"smiles": "CCO"}`                |
 
 ```powershell
-# 1) Build the cached HF dataset
+# 1) Build the cached HF dataset for one specialist
 python scripts/preprocess.py --task moleculariq --split train `
     --task-type single_count --properties ring_count `
-    --num-samples 5000 --out data/moleculariq_train
+    --num-samples 5000 --out data/miq_sc_ring_count_train
 
 # 2) Make sure moleculariq_task_type in the YAML matches --task-type above
-python scripts/train.py --config configs/moleculariq_qwen05b.yaml
+python scripts/train.py --config configs/miq_sc_ring_count.yaml
 
 # 3) Plot training curves
-python scripts/plot_training.py --output-dir outputs/moleculariq-qwen0.5b-grpo
+python scripts/plot_training.py --output-dir outputs/miq-sc_ring_count-grpo
 
 # 4) Evaluate with matching task parameters
 python scripts/evaluate.py --task moleculariq `
     --task-type single_count --properties ring_count `
     --baseline Qwen/Qwen2.5-0.5B-Instruct `
-    --trained  outputs/moleculariq-qwen0.5b-grpo `
+    --trained  outputs/miq-sc_ring_count-grpo `
     --num-samples 200
 ```
 
 Switching tasks is a config and preprocessing change, for example
 `--task-type single_count --properties aromatic_ring_count` or
 `--task-type single_index --properties carbon_atom_index`. Valid property names
-live in `moleculariq_core.properties` (`COUNT_MAP`, `INDEX_MAP`).
+live in `moleculariq_core.properties` (`COUNT_MAP`, `INDEX_MAP`,
+`CONSTRAINT_MAP`).
 
 Scoring uses `moleculariq_core.evaluate_answer`, which tolerates property-name
 aliases and JSON formatting variations; the format reward still enforces the
 R1 `<reasoning>...</reasoning>\n<answer>...</answer>` scaffold.
+
+Training also includes a shaped MolecularIQ reward by default. Exact correctness
+is still rewarded separately, but count tasks get numeric-closeness partial
+credit, index tasks get atom-set overlap credit, and constraint-generation tasks
+get valid-SMILES credit plus property-closeness credit for supported RDKit
+properties.
+
+## Multitask chemistry runs
+
+The multitask path trains one model on several MolecularIQ subtasks at once.
+Datasets are still preprocessed first, but each row now carries `task_id`,
+`task_type`, and `properties` metadata so the reward function can dispatch to
+the right MolecularIQ scorer per example.
+
+The default suite contains 16 subtasks across single-count, multi-count,
+single-index, multi-index, and constraint-generation variants. It covers ring
+topology, aromaticity, composition, H-bond acceptors, rotatable bonds, and
+atom-index attribution.
+
+Three dataset strategies are included:
+
+| Strategy | Config | Meaning |
+|----------|--------|---------|
+| `pooled` | `configs/miq_multitask_pooled.yaml` | Concatenate all selected task datasets and shuffle. |
+| `balanced` | `configs/miq_multitask_balanced.yaml` | Sample the same number of examples from each task. |
+| `adaptive` | `configs/miq_multitask_adaptive.yaml` | Sample by task weights, optionally computed from a previous multitask eval summary so weak tasks get more data. |
+
+Example pooled run:
+
+```powershell
+python scripts/preprocess_multitask.py --config configs/miq_multitask_pooled.yaml
+python scripts/train.py --config configs/miq_multitask_pooled_train.yaml
+python scripts/evaluate_multitask.py --config configs/miq_multitask_pooled.yaml `
+    --model outputs/miq-multitask-pooled-grpo --model-label pooled
+```
+
+Balanced run:
+
+```powershell
+python scripts/preprocess_multitask.py --config configs/miq_multitask_balanced.yaml
+python scripts/train.py --config configs/miq_multitask_balanced_train.yaml
+python scripts/evaluate_multitask.py --config configs/miq_multitask_balanced.yaml `
+    --model outputs/miq-multitask-balanced-grpo --model-label balanced
+```
+
+Adaptive run:
+
+```powershell
+# First evaluate a previous model, for example the balanced one.
+python scripts/evaluate_multitask.py --config configs/miq_multitask_balanced.yaml `
+    --model outputs/miq-multitask-balanced-grpo --model-label balanced
+
+# Then rebuild the adaptive dataset. The default adaptive config reads
+# outputs/multitask_eval/balanced/summary.json and oversamples lower-accuracy tasks.
+python scripts/preprocess_multitask.py --config configs/miq_multitask_adaptive.yaml --overwrite
+python scripts/train.py --config configs/miq_multitask_adaptive_train.yaml
+python scripts/evaluate_multitask.py --config configs/miq_multitask_adaptive.yaml `
+    --model outputs/miq-multitask-adaptive-grpo --model-label adaptive
+```
+
+`scripts/evaluate_multitask.py` writes per-task JSON files plus a `summary.json`
+with macro accuracy and worst-task accuracy. That summary is the handoff point
+for adaptive sampling and for later comparison scripts.
 
 ## Scaling up later
 

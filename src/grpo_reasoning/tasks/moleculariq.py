@@ -36,19 +36,19 @@ _FEW_SHOT_EXAMPLES: dict[str, tuple[str, str]] = {
         '<answer>{"aromatic_ring_count": 1, "ring_count": 1}</answer>',
     ),
     "single_index": (
-        'Report the ring_indices for the molecule "c1ccccc1". Return JSON with key'
-        ' "ring_indices" containing a list of 0-based atom indices (H excluded).',
+        'Report the ring_index for the molecule "c1ccccc1". Return JSON with key'
+        ' "ring_index" containing a list of 0-based atom indices (H excluded).',
         "<reasoning>Benzene is a 6-membered ring whose 6 heavy atoms have indices"
         " 0 through 5 in SMILES order.</reasoning>\n"
-        '<answer>{"ring_indices": [0, 1, 2, 3, 4, 5]}</answer>',
+        '<answer>{"ring_index": [0, 1, 2, 3, 4, 5]}</answer>',
     ),
     "multi_index": (
-        'For "c1ccccc1", report ring_indices and aromatic_ring_indices as JSON lists'
+        'For "c1ccccc1", report ring_index and aromatic_ring_index as JSON lists'
         " of 0-based atom indices.",
         "<reasoning>All 6 benzene atoms (0-5) are in the ring and all are"
         " aromatic.</reasoning>\n"
-        '<answer>{"aromatic_ring_indices": [0, 1, 2, 3, 4, 5],'
-        ' "ring_indices": [0, 1, 2, 3, 4, 5]}</answer>',
+        '<answer>{"aromatic_ring_index": [0, 1, 2, 3, 4, 5],'
+        ' "ring_index": [0, 1, 2, 3, 4, 5]}</answer>',
     ),
     "constraint_generation": (
         'Generate a molecule where ring_count = 1. Return JSON with key "smiles"'
@@ -88,7 +88,7 @@ def _format_instructions(task_type: str, system_prompt_style: str) -> str:
             f"{indexing} Put a single JSON object inside <answer>...</answer> "
             "with the EXACT key(s) named in the question, each mapped to a list "
             "of atom indices (empty list [] if absent). "
-            'Example: <answer>{"ring_indices": [0, 1, 2]}</answer>.'
+            'Example: <answer>{"ring_index": [0, 1, 2]}</answer>.'
         )
     if task_type == "constraint_generation":
         return (

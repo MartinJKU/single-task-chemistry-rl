@@ -31,8 +31,20 @@ Usage
 Available experiment names (defined in EXPERIMENTS below):
     sc_ring_count      single_count   x ring_count
     sc_aromatic_ring   single_count   x aromatic_ring_count
-    si_ring_indices    single_index   x ring_indices
+    sc_fused_ring      single_count   x fused_ring_count
+    sc_carbon_atom     single_count   x carbon_atom_count
+    sc_hetero_atom     single_count   x hetero_atom_count
+    sc_hba             single_count   x hba_count
+    sc_rotatable_bond  single_count   x rotatable_bond_count
+    mc_topology        multi_count    x ring/aromatic/fused ring counts
+    mc_composition     multi_count    x carbon/hetero/halogen atom counts
+    si_ring            single_index   x ring_index
+    si_aromatic_ring   single_index   x aromatic_ring_index
+    si_carbon_atom     single_index   x carbon_atom_index
+    si_hetero_atom     single_index   x hetero_atom_index
+    mi_ring_aromatic   multi_index    x ring/aromatic ring indices
     cg_ring_count      constraint_generation x ring_count
+    cg_carbon_atom     constraint_generation x carbon_atom_count
 """
 from __future__ import annotations
 
@@ -112,14 +124,81 @@ EXPERIMENTS: list[Experiment] = [
         task_type="single_count",
         properties=["aromatic_ring_count"],
     ),
+    Experiment(
+        name="sc_fused_ring",
+        label="single_count\n× fused_ring_count",
+        task_type="single_count",
+        properties=["fused_ring_count"],
+    ),
+    Experiment(
+        name="sc_carbon_atom",
+        label="single_count\n× carbon_atom_count",
+        task_type="single_count",
+        properties=["carbon_atom_count"],
+    ),
+    Experiment(
+        name="sc_hetero_atom",
+        label="single_count\n× hetero_atom_count",
+        task_type="single_count",
+        properties=["hetero_atom_count"],
+    ),
+    Experiment(
+        name="sc_hba",
+        label="single_count\n× hba_count",
+        task_type="single_count",
+        properties=["hba_count"],
+    ),
+    Experiment(
+        name="sc_rotatable_bond",
+        label="single_count\n× rotatable_bond_count",
+        task_type="single_count",
+        properties=["rotatable_bond_count"],
+    ),
+    # ---- multi_count variants ----
+    Experiment(
+        name="mc_topology",
+        label="multi_count\n× topology",
+        task_type="multi_count",
+        properties=["ring_count", "aromatic_ring_count", "fused_ring_count"],
+    ),
+    Experiment(
+        name="mc_composition",
+        label="multi_count\n× composition",
+        task_type="multi_count",
+        properties=["carbon_atom_count", "hetero_atom_count", "halogen_atom_count"],
+    ),
     # ---- single_index variants ----
     # Property names for index tasks come from moleculariq_core.
-    # Common ones: ring_indices, aromatic_ring_indices.
     Experiment(
-        name="si_ring_indices",
-        label="single_index\n× ring_indices",
+        name="si_ring",
+        label="single_index\n× ring_index",
         task_type="single_index",
-        properties=["ring_indices"],
+        properties=["ring_index"],
+    ),
+    Experiment(
+        name="si_aromatic_ring",
+        label="single_index\n× aromatic_ring_index",
+        task_type="single_index",
+        properties=["aromatic_ring_index"],
+    ),
+    Experiment(
+        name="si_carbon_atom",
+        label="single_index\n× carbon_atom_index",
+        task_type="single_index",
+        properties=["carbon_atom_index"],
+    ),
+    Experiment(
+        name="si_hetero_atom",
+        label="single_index\n× hetero_atom_index",
+        task_type="single_index",
+        properties=["hetero_atom_index"],
+    ),
+    # ---- multi_index variants ----
+    Experiment(
+        name="mi_ring_aromatic",
+        label="multi_index\n× ring/aromatic",
+        task_type="multi_index",
+        properties=["ring_index", "aromatic_ring_index"],
     ),
     # ---- constraint_generation ----
     Experiment(
@@ -127,6 +206,12 @@ EXPERIMENTS: list[Experiment] = [
         label="constraint_generation\n× ring_count",
         task_type="constraint_generation",
         properties=["ring_count"],
+    ),
+    Experiment(
+        name="cg_carbon_atom",
+        label="constraint_generation\n× carbon_atom_count",
+        task_type="constraint_generation",
+        properties=["carbon_atom_count"],
     ),
 ]
 

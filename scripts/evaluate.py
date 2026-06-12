@@ -2,14 +2,16 @@
 
 Usage:
     # Eval just one model:
-    python scripts/evaluate.py --task gsm8k --model Qwen/Qwen2.5-0.5B-Instruct --num-samples 200
+    python scripts/evaluate.py --task moleculariq --task-type single_count \
+        --properties ring_count --model Qwen/Qwen2.5-0.5B-Instruct --num-samples 200
 
     # Compare baseline vs trained checkpoint:
-    python scripts/evaluate.py --task gsm8k \
+    python scripts/evaluate.py --task moleculariq --task-type single_count \
+        --properties ring_count \
         --baseline Qwen/Qwen2.5-0.5B-Instruct \
-        --trained outputs/gsm8k-qwen0.5b-grpo \
+        --trained outputs/miq-sc_ring_count-grpo \
         --num-samples 200 \
-        --figure outputs/gsm8k-qwen0.5b-grpo/figures/baseline_vs_trained.png
+        --figure outputs/miq-sc_ring_count-grpo/figures/baseline_vs_trained.png
 """
 from __future__ import annotations
 

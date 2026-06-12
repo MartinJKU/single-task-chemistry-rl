@@ -80,6 +80,37 @@ def preprocess_main() -> None:
     print(f"Saved preprocessed dataset to {out}")
 
 
+def preprocess_multitask_main() -> None:
+    """Run multitask MolecularIQ preprocessing from a YAML config."""
+    p = argparse.ArgumentParser()
+    p.add_argument("--config", required=True)
+    p.add_argument("--out", default=None, help="Override out_dir from the YAML.")
+    p.add_argument("--strategy", default=None, help="Override strategy from the YAML.")
+    p.add_argument("--total-samples", type=int, default=None)
+    p.add_argument("--samples-per-task", type=int, default=None)
+    p.add_argument("--overwrite", action="store_true")
+    args = p.parse_args()
+
+    from .multitask import MultitaskDatasetConfig, build_and_save_multitask
+    from .utils import load_yaml
+
+    cfg_dict = load_yaml(args.config)
+    if args.out is not None:
+        cfg_dict["out_dir"] = args.out
+    if args.strategy is not None:
+        cfg_dict["strategy"] = args.strategy
+    if args.total_samples is not None:
+        cfg_dict["total_samples"] = args.total_samples
+    if args.samples_per_task is not None:
+        cfg_dict["samples_per_task"] = args.samples_per_task
+
+    out = build_and_save_multitask(
+        MultitaskDatasetConfig.from_dict(cfg_dict),
+        overwrite=args.overwrite,
+    )
+    print(f"Saved multitask dataset to {out}")
+
+
 def train_main() -> None:
     """Run the GRPO training command.
 
@@ -98,6 +129,21 @@ def train_main() -> None:
         "--max-steps", type=int, default=None, help="Override max_steps for a quick run."
     )
     p.add_argument("--output-dir", default=None, help="Override output_dir from the YAML.")
+    p.add_argument(
+        "--resume-from-checkpoint",
+        nargs="?",
+        const="latest",
+        default=None,
+        help=(
+            "Resume from a checkpoint path. If passed without a value, resume from "
+            "the latest checkpoint under output_dir."
+        ),
+    )
+    p.add_argument(
+        "--no-save-on-interrupt",
+        action="store_true",
+        help="Disable best-effort checkpoint saving when Ctrl+C interrupts training.",
+    )
     args = p.parse_args()
 
     from .train import TrainArgs, train
@@ -108,6 +154,10 @@ def train_main() -> None:
         cfg_dict["max_steps"] = args.max_steps
     if args.output_dir is not None:
         cfg_dict["output_dir"] = args.output_dir
+    if args.resume_from_checkpoint is not None:
+        cfg_dict["resume_from_checkpoint"] = args.resume_from_checkpoint
+    if args.no_save_on_interrupt:
+        cfg_dict["save_on_interrupt"] = False
 
     train(TrainArgs(**cfg_dict))
 
@@ -219,6 +269,75 @@ def evaluate_main() -> None:
     plot_baseline_vs_trained(
         baseline, trained, fig_path, title=f"{args.task}: baseline vs GRPO-trained"
     )
+
+
+def evaluate_multitask_main() -> None:
+    """Evaluate one model on every task in a multitask config."""
+    p = argparse.ArgumentParser()
+    p.add_argument("--config", required=True)
+    p.add_argument("--model", required=True)
+    p.add_argument("--model-label", default=None)
+    p.add_argument("--num-samples", type=int, default=200)
+    p.add_argument("--batch-size", type=int, default=8)
+    p.add_argument("--max-new-tokens", type=int, default=512)
+    p.add_argument("--out-dir", default="outputs/multitask_eval")
+    args = p.parse_args()
+
+    import gc
+    import json
+    from datetime import datetime
+
+    import torch
+
+    from .eval import evaluate
+    from .multitask import MultitaskDatasetConfig
+    from .utils import load_yaml
+
+    cfg = MultitaskDatasetConfig.from_dict(load_yaml(args.config))
+    label = args.model_label or Path(args.model).name.replace("/", "_")
+    out_dir = Path(args.out_dir) / label
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    task_results = []
+    for spec in cfg.tasks:
+        print(f"\n=== Eval {label}: {spec.task_id} ===")
+        metrics = evaluate(
+            model_path=args.model,
+            task_name="moleculariq",
+            num_samples=args.num_samples,
+            batch_size=args.batch_size,
+            max_new_tokens=args.max_new_tokens,
+            save_path=out_dir / f"{spec.task_id}_eval.json",
+            task_kwargs=spec.task_kwargs(default_seed=cfg.seed),
+        )
+        task_results.append(
+            {
+                "task_id": spec.task_id,
+                "task_type": spec.task_type,
+                "properties": list(spec.properties),
+                "accuracy": metrics["accuracy"],
+                "correct": metrics["correct"],
+                "total": metrics["total"],
+            }
+        )
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    accuracies = [row["accuracy"] for row in task_results]
+    summary = {
+        "model_label": label,
+        "model_path": args.model,
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "macro_accuracy": sum(accuracies) / len(accuracies) if accuracies else 0.0,
+        "worst_task_accuracy": min(accuracies) if accuracies else 0.0,
+        "tasks": task_results,
+    }
+    summary_path = out_dir / "summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    print(f"\n[multitask-eval] wrote {summary_path}")
+    print(f"[multitask-eval] macro accuracy = {summary['macro_accuracy']:.2%}")
+    print(f"[multitask-eval] worst task     = {summary['worst_task_accuracy']:.2%}")
 
 
 def plot_training_main() -> None:

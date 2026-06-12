@@ -3,6 +3,7 @@ from __future__ import annotations
 from grpo_reasoning.rewards import (
     format_reward,
     make_exact_match_reward,
+    make_moleculariq_shaped_reward,
     soft_format_reward,
 )
 
@@ -90,3 +91,59 @@ def test_correctness_reward_empty_extraction():
     reward = make_exact_match_reward()
     completions = [_conv("no tags here")]
     assert reward(completions=completions, answer=["42"]) == [0.0]
+
+
+def test_moleculariq_shaped_count_closeness():
+    """Verify count tasks receive numeric partial credit."""
+    reward = make_moleculariq_shaped_reward(task_type="single_count", weight=1.0)
+    completions = [_conv('<reasoning>x</reasoning>\n<answer>{"ring_count": 8}</answer>')]
+    out = reward(completions=completions, answer=['{"ring_count": 10}'])
+    assert 0.8 < out[0] < 0.9
+
+
+def test_moleculariq_shaped_multi_count_averages_keys():
+    """Verify multi-count partial credit averages target keys."""
+    reward = make_moleculariq_shaped_reward(task_type="multi_count", weight=1.0)
+    completions = [
+        _conv(
+            "<reasoning>x</reasoning>\n"
+            '<answer>{"ring_count": 2, "aromatic_ring_count": 0}</answer>'
+        )
+    ]
+    out = reward(
+        completions=completions,
+        answer=['{"ring_count": 2, "aromatic_ring_count": 1}'],
+    )
+    assert 0.7 < out[0] < 0.8
+
+
+def test_moleculariq_shaped_index_overlap():
+    """Verify index tasks receive set-overlap partial credit."""
+    reward = make_moleculariq_shaped_reward(task_type="single_index", weight=1.0)
+    completions = [
+        _conv('<reasoning>x</reasoning>\n<answer>{"ring_index": [0, 1, 9]}</answer>')
+    ]
+    out = reward(completions=completions, answer=['{"ring_index": [0, 1, 2]}'])
+    assert out == [2 * 2 / 6]
+
+
+def test_moleculariq_shaped_constraint_valid_smiles_if_rdkit_available():
+    """Verify constraint generation gives validity reward for parseable SMILES."""
+    try:
+        import rdkit  # noqa: F401
+    except ImportError:
+        return
+
+    reward = make_moleculariq_shaped_reward(
+        task_type="constraint_generation",
+        weight=1.0,
+        smiles_validity_weight=0.5,
+    )
+    completions = [
+        _conv('<reasoning>x</reasoning>\n<answer>{"smiles": "c1ccccc1"}</answer>')
+    ]
+    out = reward(
+        completions=completions,
+        answer=['[{"property": "ring_count", "operator": "=", "value": 1}]'],
+    )
+    assert out == [1.5]

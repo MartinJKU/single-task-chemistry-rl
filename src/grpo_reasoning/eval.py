@@ -8,10 +8,11 @@ from typing import Any
 import torch
 from datasets import Dataset
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM
 
 from .prompts import extract_xml_answer
 from .tasks import get_task
+from .utils import load_tokenizer
 
 
 @torch.no_grad()
@@ -45,7 +46,7 @@ def evaluate(
     print(f"[eval] task    = {task_name}")
     print(f"[eval] samples = {len(ds)}")
 
-    tokenizer = AutoTokenizer.from_pretrained(model_path, padding_side="left")
+    tokenizer = load_tokenizer(model_path, padding_side="left")
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 

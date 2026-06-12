@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "grpo-reasoning"
 version = "0.1.0"
-description = "Single-task GRPO fine-tuning for math (GSM8K) and chemistry (MolecularIQ) with Qwen2.5-0.5B."
+description = "Multitask GRPO fine-tuning for MolecularIQ chemistry reasoning with Qwen2.5-0.5B."
 requires-python = ">=3.10"
 readme = "README.md"
 license = { text = "MIT" }
@@ -28,8 +28,10 @@ dev = ["pytest>=8.0"]
 
 [project.scripts]
 grpo-evaluate = "grpo_reasoning.cli:evaluate_main"
+grpo-evaluate-multitask = "grpo_reasoning.cli:evaluate_multitask_main"
 grpo-plot-training = "grpo_reasoning.cli:plot_training_main"
 grpo-preprocess = "grpo_reasoning.cli:preprocess_main"
+grpo-preprocess-multitask = "grpo_reasoning.cli:preprocess_multitask_main"
 grpo-train = "grpo_reasoning.cli:train_main"
 
 [tool.setuptools.packages.find]

@@ -1,0 +1,111 @@
+out_dir: data/miq_multitask_adaptive_train
+strategy: adaptive
+split: train
+seed: 42
+shuffle: true
+total_samples: 24000
+
+adaptive:
+  # Point this at a previous evaluate_multitask.py summary to oversample weak tasks.
+  # Without this file, the explicit sampling_weight values below are used.
+  metrics_path: outputs/multitask_eval/balanced/summary.json
+  accuracy_key: accuracy
+  floor: 0.05
+  temperature: 1.0
+
+tasks:
+  - task_id: sc_ring_count
+    task_type: single_count
+    properties: [ring_count]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: sc_aromatic_ring
+    task_type: single_count
+    properties: [aromatic_ring_count]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: sc_fused_ring
+    task_type: single_count
+    properties: [fused_ring_count]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: sc_carbon_atom
+    task_type: single_count
+    properties: [carbon_atom_count]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: sc_hetero_atom
+    task_type: single_count
+    properties: [hetero_atom_count]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: sc_hba
+    task_type: single_count
+    properties: [hba_count]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: sc_rotatable_bond
+    task_type: single_count
+    properties: [rotatable_bond_count]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: mc_topology
+    task_type: multi_count
+    properties: [ring_count, aromatic_ring_count, fused_ring_count]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: mc_composition
+    task_type: multi_count
+    properties: [carbon_atom_count, hetero_atom_count, halogen_atom_count]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: si_ring
+    task_type: single_index
+    properties: [ring_index]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: si_aromatic_ring
+    task_type: single_index
+    properties: [aromatic_ring_index]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: si_carbon_atom
+    task_type: single_index
+    properties: [carbon_atom_index]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: si_hetero_atom
+    task_type: single_index
+    properties: [hetero_atom_index]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: mi_ring_aromatic
+    task_type: multi_index
+    properties: [ring_index, aromatic_ring_index]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: cg_ring_count
+    task_type: constraint_generation
+    properties: [ring_count]
+    num_samples: 1500
+    sampling_weight: 1.0
+
+  - task_id: cg_carbon_atom
+    task_type: constraint_generation
+    properties: [carbon_atom_count]
+    num_samples: 1500
+    sampling_weight: 1.0

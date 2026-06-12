@@ -1,7 +1,7 @@
 beta: 0.005
 bf16: true
 correctness_weight: 2.0
-dataset_path: data/miq_si_ring_indices_train
+dataset_path: data/miq_mc_topology_train
 gradient_accumulation_steps: 4
 gradient_checkpointing: true
 learning_rate: 1.0e-05
@@ -12,11 +12,11 @@ max_grad_norm: 0.1
 max_prompt_length: 384
 max_steps: -1
 model_name: Qwen/Qwen2.5-0.5B-Instruct
-moleculariq_task_type: single_index
+moleculariq_task_type: multi_count
 num_generations: 4
 num_train_epochs: 1
 optim: adamw_8bit
-output_dir: outputs/miq-si_ring_indices-grpo
+output_dir: outputs/miq-mc_topology-grpo
 per_device_train_batch_size: 4
 save_steps: 100
 seed: 42
